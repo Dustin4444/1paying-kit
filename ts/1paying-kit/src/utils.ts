@@ -7,7 +7,14 @@ export function bytesToBase64(bytes: Uint8Array): string {
   if (typeof (bytes as any).toBase64 === 'function') {
     return (bytes as any).toBase64()
   }
-  return globalThis.btoa(String.fromCharCode(...bytes))
+
+  // Avoid spreading huge arrays into String.fromCharCode.
+  let bin = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return globalThis.btoa(bin)
 }
 
 /**
@@ -20,8 +27,14 @@ export function bytesToBase64Url(bytes: Uint8Array): string {
     return (bytes as any).toBase64({ alphabet: 'base64url', omitPadding: true })
   }
 
+  let bin = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+
   return globalThis
-    .btoa(String.fromCharCode(...bytes))
+    .btoa(bin)
     .replaceAll('+', '-')
     .replaceAll('/', '_')
     .replaceAll('=', '')
@@ -39,10 +52,15 @@ export function base64ToBytes(str: string): Uint8Array {
     }
     return (Uint8Array as any).fromBase64(str)
   }
-  return Uint8Array.from(
-    globalThis.atob(str.replaceAll('-', '+').replaceAll('_', '/')),
-    (m) => m.charCodeAt(0)
-  )
+
+  // Normalize base64url to base64 and restore padding so atob can decode.
+  let normalized = str.replaceAll('-', '+').replaceAll('_', '/')
+  const mod = normalized.length % 4
+  if (mod === 2) normalized += '=='
+  else if (mod === 3) normalized += '='
+  else if (mod === 1) throw new Error('Invalid base64/base64url string')
+
+  return Uint8Array.from(globalThis.atob(normalized), (m) => m.charCodeAt(0))
 }
 
 /**
@@ -51,6 +69,18 @@ export function base64ToBytes(str: string): Uint8Array {
  * @returns The decoded string.
  */
 export function base64ToString(str: string): string {
+  const bytes = base64ToBytes(str)
+
+  if (typeof globalThis.TextDecoder === 'function') {
+    return new TextDecoder().decode(bytes)
+  }
+
+  // Node fallback (for unusual runtimes where TextDecoder isn't global)
+  if (typeof (globalThis as any).Buffer !== 'undefined') {
+    return (globalThis as any).Buffer.from(bytes).toString('utf8')
+  }
+
+  // Best-effort fallback (binary/latin1)
   return globalThis.atob(str.replaceAll('-', '+').replaceAll('_', '/'))
 }
 
@@ -60,5 +90,15 @@ export function base64ToString(str: string): string {
  * @returns The base64 encoded string.
  */
 export function stringToBase64(str: string): string {
+  if (typeof globalThis.TextEncoder === 'function') {
+    return bytesToBase64(new TextEncoder().encode(str))
+  }
+
+  // Node fallback (for unusual runtimes where TextEncoder isn't global)
+  if (typeof (globalThis as any).Buffer !== 'undefined') {
+    return (globalThis as any).Buffer.from(str, 'utf8').toString('base64')
+  }
+
+  // Best-effort fallback (ASCII-only)
   return globalThis.btoa(str)
 }

@@ -51,6 +51,7 @@
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "format": "prettier --write \"src/**/*.{json,js,jsx,ts,tsx,css,scss}\"",
     "test": "vitest run --testTimeout=60000",
+    "bench": "vitest bench",
     "ncu": "npx npm-check-updates -u"
   },
   "dependencies": {
@@ -59,6 +60,7 @@
     "cborg": ">=4.3.0"
   },
   "devDependencies": {
+    "@codspeed/vitest-plugin": "^5.7.1",
     "@types/eslint": "^9.6.1",
     "@types/node": "24.3.0",
     "@typescript-eslint/eslint-plugin": "^8.42.0",

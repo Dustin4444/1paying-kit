@@ -4,6 +4,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@ldclabs/1paying-kit.svg)](https://www.npmjs.com/package/@ldclabs/1paying-kit)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/Dustin4444/1paying-kit?utm_source=badge)
 
 [English readme](./README.md) | [中文说明](./README_CN.md)
 

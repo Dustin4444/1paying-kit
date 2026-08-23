@@ -3,7 +3,7 @@
   "version": "0.4.2",
   "type": "module",
   "description": "The Typescript version of the client SDK for https://1Pay.ing.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "homepage": "https://github.com/ldclabs/1paying-kit/tree/main/ts/1paying-kit",
   "repository": {
     "type": "git",

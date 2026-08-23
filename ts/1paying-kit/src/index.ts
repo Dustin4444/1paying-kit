@@ -2,13 +2,15 @@ import { ed25519 } from '@noble/curves/ed25519'
 import { randomBytes } from '@noble/hashes/utils'
 import { encode, rfc8949EncodeOptions } from 'cborg'
 import { gzipCompress } from './gzip.js'
-import type {
-  Message,
-  PaymentRequired,
-  PaymentRequirementsResponse,
-  TransactionState
+import {
+  toMessageCompact,
+  type Message,
+  type PaymentRequired,
+  type PaymentRequirementsResponse,
+  type SettleResponse,
+  type TransactionState,
+  type UpdatePaymentTxStatus
 } from './types.js'
-import { toMessageCompact, type SettleResponse } from './types.js'
 import { base64ToString, bytesToBase64Url } from './utils.js'
 
 export * from './gzip.js'
@@ -44,6 +46,52 @@ export interface PayingKitOptions {
 }
 
 /**
+ * Waits for the given duration, rejecting early if the signal is aborted.
+ * @param ms The duration in milliseconds.
+ * @param signal An optional AbortSignal to cancel the wait.
+ */
+function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason)
+      return
+    }
+
+    let timer: ReturnType<typeof setTimeout>
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(signal!.reason)
+    }
+
+    timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+/**
+ * Converts a transaction error payload into a real `Error`, preserving the
+ * structured `code` and `data` fields on the resulting instance.
+ * @param error The error payload from the transaction state.
+ */
+function toError(error: TransactionState['error']): Error {
+  const err = new Error(
+    error?.message || 'Unknown error during payment processing'
+  ) as Error & { code?: number; data?: unknown }
+
+  if (error) {
+    err.code = error.code
+    if (error.data !== undefined) {
+      err.data = error.data
+    }
+  }
+  return err
+}
+
+/**
  * The PayingKit class provides methods to interact with the 1pay.ing service.
  */
 export class PayingKit {
@@ -64,12 +112,11 @@ export class PayingKit {
    * Tries to get a payment URL and transaction ID from a fetch Response.
    * It checks if the response status is 402 (Payment Required) and if the 'PAYMENT-REQUIRED' header is present.
    * @param res The fetch Response object.
-   * @returns A object containing the payment URL and transaction ID, or an empty object if payment is not required.
+   * @returns An object containing the payment URL and transaction ID, or `{ payUrl: null, txid: null }` if payment is not required.
    */
-  async tryGetPayUrl(res: Response): Promise<{
-    payUrl: string | null
-    txid: string | null
-  }> {
+  async tryGetPayUrl(
+    res: Response
+  ): Promise<{ payUrl: string; txid: string } | { payUrl: null; txid: null }> {
     if (res.status !== 402) {
       return { payUrl: null, txid: null }
     }
@@ -131,31 +178,47 @@ export class PayingKit {
     const url = `${API_ENDPOINT}/${txid}`
 
     // Initial delay to allow payment processing to start
-    await new Promise((resolve) =>
-      setTimeout(resolve, options.initialDelayMs ?? 5000)
-    )
+    await sleep(options.initialDelayMs ?? 5000, signal)
 
     while (true) {
       attempt += 1
-      const response = await fetch(url, { signal })
-      if (response.status === 200) {
+
+      let response: Response | null = null
+      let failure = ''
+      try {
+        response = await fetch(url, { signal })
+      } catch (err) {
+        // The caller cancelled: surface it instead of burning a retry.
+        if (signal?.aborted) {
+          throw err
+        }
+        // Transient network failures count toward the same retry budget as
+        // non-200 responses, so a single blip doesn't abort the whole wait.
+        failure = err instanceof Error ? err.message : String(err)
+      }
+
+      if (response?.status === 200) {
         requestFailed = 0
         const data: TransactionState = await response.json()
         if (data.status === 'completed' && data.result) {
           return data.result
         } else if (data.status === 'error') {
-          throw (
-            data.error ?? new Error('Unknown error during payment processing')
-          )
+          throw toError(data.error)
         } else if (options.onprogress) {
           options.onprogress({ ...data, attempt })
         }
       } else {
         requestFailed += 1
+        if (response) {
+          // Always drain the body so the connection can be released.
+          failure = await response
+            .text()
+            .catch(() => `HTTP ${response!.status}`)
+        }
+
         if (requestFailed >= 3) {
-          const text = await response.text()
           throw new Error(
-            `Failed to fetch transaction status after 3 attempts: ${text}`
+            `Failed to fetch transaction status after 3 attempts: ${failure}`
           )
         }
 
@@ -168,7 +231,7 @@ export class PayingKit {
         throw new Error('Timeout waiting for payment payload')
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      await sleep(2000, signal)
     }
   }
 
@@ -198,16 +261,24 @@ export class PayingKit {
   ): Promise<void> {
     const info = this.getSettleResponse(input)
     if (info) {
-      await fetch(`${API_ENDPOINT}/${txid}/status`, {
+      const body: UpdatePaymentTxStatus = {
+        tx: info.transaction,
+        status: info.success ? 'finalized' : 'failed'
+      }
+      const res = await fetch(`${API_ENDPOINT}/${txid}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          tx: info.transaction,
-          status: info.success ? 'finalized' : 'failed'
-        })
+        body: JSON.stringify(body)
       })
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(
+          `Failed to submit settle result: ${res.status} ${text}`.trim()
+        )
+      }
     }
   }
 

@@ -1,3 +1,19 @@
+const CHUNK_SIZE = 0x8000
+
+/**
+ * Converts a Uint8Array into a binary (latin1) string.
+ * Chunked to avoid spreading huge arrays into String.fromCharCode.
+ * @param bytes The Uint8Array to convert.
+ * @returns The binary string.
+ */
+function bytesToBinaryString(bytes: Uint8Array): string {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE))
+  }
+  return bin
+}
+
 /**
  * Encodes a Uint8Array to a base64 string.
  * @param bytes The Uint8Array to encode.
@@ -8,13 +24,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
     return (bytes as any).toBase64()
   }
 
-  // Avoid spreading huge arrays into String.fromCharCode.
-  let bin = ''
-  const chunkSize = 0x8000
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
-  }
-  return globalThis.btoa(bin)
+  return globalThis.btoa(bytesToBinaryString(bytes))
 }
 
 /**
@@ -27,14 +37,8 @@ export function bytesToBase64Url(bytes: Uint8Array): string {
     return (bytes as any).toBase64({ alphabet: 'base64url', omitPadding: true })
   }
 
-  let bin = ''
-  const chunkSize = 0x8000
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
-  }
-
   return globalThis
-    .btoa(bin)
+    .btoa(bytesToBinaryString(bytes))
     .replaceAll('+', '-')
     .replaceAll('/', '_')
     .replaceAll('=', '')
@@ -81,7 +85,7 @@ export function base64ToString(str: string): string {
   }
 
   // Best-effort fallback (binary/latin1)
-  return globalThis.atob(str.replaceAll('-', '+').replaceAll('_', '/'))
+  return bytesToBinaryString(bytes)
 }
 
 /**

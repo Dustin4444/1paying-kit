@@ -74,9 +74,9 @@ The main class for interacting with the 1Pay.ing service.
 
 An instance of the `PayingKit` class initialized with a new Ed25519 key pair.
 
-#### `async tryGetPayUrl(res: Response): Promise<{ payUrl: string | null; txid: string | null }>`
+#### `async tryGetPayUrl(res: Response): Promise<{ payUrl: string; txid: string } | { payUrl: null; txid: null }>`
 
-Parses a `fetch` `Response`. If the status is `402` and the `PAYMENT-REQUIRED` header is present, it returns an object with the `payUrl` and `txid`. Otherwise, it returns an empty object.
+Parses a `fetch` `Response`. If the status is `402`, it reads the payment requirements from the `PAYMENT-REQUIRED` header (falling back to the JSON body) and returns an object with the `payUrl` and `txid`. Otherwise it returns `{ payUrl: null, txid: null }`.
 
 #### `async getPayUrl(requirements: PaymentRequirementsResponse): Promise<{ payUrl: string; txid: string }>`
 
@@ -89,6 +89,8 @@ Polls the 1Pay.ing transaction service until the payment is completed.
 - `txid`: The transaction ID from `getPayUrl` or `tryGetPayUrl`.
 - `options`:
   - `timeoutMs` (optional): Timeout in milliseconds. Defaults to 3 minutes.
+  - `initialDelayMs` (optional): Delay before the first poll. Defaults to 5 seconds.
+  - `signal` (optional): An `AbortSignal` that cancels the wait, including the delays between polls.
   - `onprogress` (optional): A callback function `(state: TransactionState & { attempt: number }) => void` that receives polling status updates.
 
 Returns a promise that resolves with the base64-encoded payment payload upon success or rejects on failure or timeout.

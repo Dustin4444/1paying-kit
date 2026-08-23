@@ -52,28 +52,36 @@ export function toMessage(
     return msg
   }
 
-  let rt: Message<PaymentRequirementsResponse> = {
+  // Absent optional fields are omitted rather than set to `undefined`, which
+  // cborg would otherwise encode as an explicit CBOR `undefined` (0xf7).
+  const payload = {
+    x402Version: msg.p.x,
+    accepts: msg.p.a.map(toPaymentRequirements) as PaymentRequirementsV1[]
+  } as PaymentRequirementsResponse
+
+  if (msg.p.e != null) {
+    payload.error = msg.p.e
+  }
+
+  const rt: Message<PaymentRequirementsResponse> = {
     pubkey: msg.pk,
     nonce: msg.n,
-    payload: {
-      x402Version: msg.p.x,
-      error: msg.p.e!,
-      accepts: msg.p.a.map(toPaymentRequirements) as PaymentRequirementsV1[]
-    }
+    payload
   }
 
   if ('r' in msg.p) {
-    const payload = rt.payload as any as PaymentRequired
-    if (payload.error == null) {
-      delete payload.error
+    const required = rt.payload as any as PaymentRequired
+    const resource: ResourceInfo = { url: msg.p.r.u }
+    if (msg.p.r.d != null) {
+      resource.description = msg.p.r.d
     }
-    payload['resource'] = {
-      url: msg.p.r.u,
-      description: msg.p.r.d,
-      mimeType: msg.p.r.m
+    if (msg.p.r.m != null) {
+      resource.mimeType = msg.p.r.m
     }
+    required.resource = resource
+
     if (msg.p.ex) {
-      payload['extensions'] = {
+      required.extensions = {
         info: msg.p.ex.i,
         schema: msg.p.ex.s
       }
@@ -101,30 +109,39 @@ export function toMessageCompact(
     return msg
   }
 
+  // Absent optional fields are omitted rather than set to `undefined`, which
+  // cborg would otherwise encode as an explicit CBOR `undefined` (0xf7).
+  const p = {
+    x: msg.payload.x402Version,
+    a: msg.payload.accepts.map(
+      toPaymentRequirementsCompact
+    ) as PaymentRequirementsCompactV1[]
+  } as PaymentRequirementsResponseCompactV1
+
+  if (msg.payload.error != null) {
+    p.e = msg.payload.error
+  }
+
   const rt: MessageCompact<PaymentRequirementsResponseCompactV1> = {
     pk: msg.pubkey,
     n: msg.nonce,
-    p: {
-      x: msg.payload.x402Version,
-      e: msg.payload.error!,
-      a: msg.payload.accepts.map(
-        toPaymentRequirementsCompact
-      ) as PaymentRequirementsCompactV1[]
-    }
+    p
   }
 
   if ('resource' in msg.payload) {
-    const payload = rt.p as any as PaymentRequiredCompact
-    if (payload.e == null) {
-      delete payload.e
+    const compact = rt.p as any as PaymentRequiredCompact
+    const resource = msg.payload.resource!
+    const r: ResourceInfoCompact = { u: resource.url }
+    if (resource.description != null) {
+      r.d = resource.description
     }
-    payload['r'] = {
-      u: msg.payload.resource!.url,
-      d: msg.payload.resource!.description,
-      m: msg.payload.resource!.mimeType
+    if (resource.mimeType != null) {
+      r.m = resource.mimeType
     }
+    compact.r = r
+
     if (msg.payload.extensions) {
-      payload['ex'] = {
+      compact.ex = {
         i: msg.payload.extensions.info,
         s: msg.payload.extensions.schema
       }

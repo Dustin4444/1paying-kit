@@ -197,9 +197,20 @@ export class PayingKit {
         failure = err instanceof Error ? err.message : String(err)
       }
 
+      let data: TransactionState | null = null
       if (response?.status === 200) {
+        try {
+          data = (await response.json()) as TransactionState
+        } catch (err) {
+          // A 200 carrying a non-JSON body (proxy interstitial, truncated
+          // response) is a transient failure like any other, not a reason to
+          // abandon a payment that may still be in flight.
+          failure = err instanceof Error ? err.message : String(err)
+        }
+      }
+
+      if (data) {
         requestFailed = 0
-        const data: TransactionState = await response.json()
         if (data.status === 'completed' && data.result) {
           return data.result
         } else if (data.status === 'error') {
@@ -209,11 +220,11 @@ export class PayingKit {
         }
       } else {
         requestFailed += 1
-        if (response) {
-          // Always drain the body so the connection can be released.
-          failure = await response
-            .text()
-            .catch(() => `HTTP ${response!.status}`)
+        if (response && !failure) {
+          // Always drain the body so the connection can be released, and keep
+          // the status in the message so an empty body is still diagnosable.
+          const text = await response.text().catch(() => '')
+          failure = `HTTP ${response.status}${text ? `: ${text}` : ''}`
         }
 
         if (requestFailed >= 3) {
@@ -292,7 +303,13 @@ export class PayingKit {
   }
 
   verify(message: Uint8Array, signature: Uint8Array): boolean {
-    return ed25519.verify(signature, message, this.#pk)
+    try {
+      // `ed25519.verify` throws on malformed input (e.g. a signature that is
+      // not exactly 64 bytes); a boolean predicate must not.
+      return ed25519.verify(signature, message, this.#pk)
+    } catch {
+      return false
+    }
   }
 }
 

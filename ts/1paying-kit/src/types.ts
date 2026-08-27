@@ -52,6 +52,10 @@ export function toMessage(
     return msg
   }
 
+  if (!Array.isArray(msg.p?.a)) {
+    throw new Error('Invalid message: "p.a" (accepts) must be an array')
+  }
+
   // Absent optional fields are omitted rather than set to `undefined`, which
   // cborg would otherwise encode as an explicit CBOR `undefined` (0xf7).
   const payload = {
@@ -107,6 +111,10 @@ export function toMessageCompact(
 > {
   if ('pk' in msg && 'n' in msg && 'p' in msg) {
     return msg
+  }
+
+  if (!Array.isArray(msg.payload?.accepts)) {
+    throw new Error('Invalid message: "payload.accepts" must be an array')
   }
 
   // Absent optional fields are omitted rather than set to `undefined`, which

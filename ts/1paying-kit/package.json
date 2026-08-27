@@ -1,6 +1,6 @@
 {
   "name": "@ldclabs/1paying-kit",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "type": "module",
   "description": "The Typescript version of the client SDK for https://1Pay.ing.",
   "license": "Apache-2.0",
@@ -12,13 +12,9 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "browser": {
-    "node:fs/promises": false,
-    "node:path": false,
-    "mime/lite": false
-  },
   "files": [
     "dist",
+    "src",
     "package.json",
     "LICENSE",
     "README.md"

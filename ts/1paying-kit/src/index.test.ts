@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { payingKit, type PaymentRequirementsResponse } from './index.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  PayingKit,
+  payingKit,
+  type PaymentRequirementsResponse
+} from './index.js'
 
 describe('PayingKit#getPayUrl', () => {
   it('encodes requirements into a deterministic payment URL', async () => {
@@ -111,5 +115,50 @@ describe('PayingKit#getPayUrl', () => {
     console.log('Requirements 2 payUrl length:', payUrl2.length)
     console.log({ payUrl2, txid })
     expect(payUrl2.length < payUrl.length * 2).toBe(true)
+  })
+})
+
+describe('PayingKit#waitForPaymentPayload', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('retries a 200 response whose body is not JSON', async () => {
+    const bodies = ['<html>proxy</html>', '<html>proxy</html>', null]
+    const fetchMock = vi.fn(async () => {
+      const body = bodies.shift()
+      return body == null
+        ? new Response(JSON.stringify({ status: 'completed', result: 'ok' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          })
+        : new Response(body, { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      payingKit.waitForPaymentPayload('txid', { initialDelayMs: 0 })
+    ).resolves.toBe('ok')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps the HTTP status when the error response has an empty body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 404 }))
+    )
+
+    await expect(
+      payingKit.waitForPaymentPayload('txid', { initialDelayMs: 0 })
+    ).rejects.toThrow(/after 3 attempts: HTTP 404/)
+  })
+})
+
+describe('PayingKit#verify', () => {
+  it('returns false instead of throwing on a malformed signature', () => {
+    const kit = new PayingKit()
+    const message = new Uint8Array([1, 2, 3])
+    expect(kit.verify(message, new Uint8Array(10))).toBe(false)
+    expect(kit.verify(message, new Uint8Array(64))).toBe(false)
   })
 })

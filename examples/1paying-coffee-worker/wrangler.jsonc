@@ -58,7 +58,10 @@
 			"resource": {
 				"url": "https://example.1pay.ing/1paying-coffee/Cappuccino",
 				"description": "Purchase a Grande Cappuccino with oat milk",
-				"mimeType": "text/markdown"
+				"mimeType": "text/markdown",
+				"serviceName": "1Paying Coffee",
+				"tags": ["coffee", "demo"],
+				"iconUrl": "https://example.1pay.ing/1paying-coffee/icon.png"
 			},
 			"accepts": [
 				{
@@ -71,7 +74,7 @@
 				},
 				{
 					"scheme": "exact",
-					"network": "solana-devnet",
+					"network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
 					"amount": "10000",
 					"asset": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
 					"payTo": "FRVJU92DEkT6yQyQtyEKwUeKWPqhHeYJqsTCdxUjq8iP",
@@ -82,7 +85,7 @@
 				},
 				{
 					"scheme": "exact",
-					"network": "base-sepolia",
+					"network": "eip155:84532",
 					"amount": "10000",
 					"payTo": "0x185a1DEf920B8c8f936988D70aC93aE453acf42B",
 					"asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",

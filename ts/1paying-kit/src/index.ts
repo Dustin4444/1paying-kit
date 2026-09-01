@@ -3,7 +3,11 @@ import { randomBytes } from '@noble/hashes/utils'
 import { encode, rfc8949EncodeOptions } from 'cborg'
 import { gzipCompress } from './gzip.js'
 import {
+  isSettlementPending,
+  PAYMENT_REQUIRED_HEADER,
+  PAYMENT_RESPONSE_HEADER,
   toMessageCompact,
+  X_PAYMENT_RESPONSE_HEADER,
   type Message,
   type PaymentRequired,
   type PaymentRequirementsResponse,
@@ -121,10 +125,25 @@ export class PayingKit {
       return { payUrl: null, txid: null }
     }
 
-    const val = res.headers.get('PAYMENT-REQUIRED')
-    const requirements = val
-      ? JSON.parse(base64ToString(val))
-      : await res.json()
+    // x402 v2 carries `PaymentRequired` in the header; v1 servers put the
+    // requirements in the body. A header that fails to decode falls back to the
+    // body rather than aborting a payment the server may still be able to
+    // describe.
+    const val = res.headers.get(PAYMENT_REQUIRED_HEADER)
+    let requirements: PaymentRequirementsResponse | PaymentRequired | null =
+      null
+    if (val) {
+      try {
+        requirements = JSON.parse(base64ToString(val))
+      } catch {
+        requirements = null
+      }
+    }
+    if (requirements == null) {
+      requirements = (await res.json()) as
+        | PaymentRequirementsResponse
+        | PaymentRequired
+    }
     return this.getPayUrl(requirements)
   }
 
@@ -256,41 +275,54 @@ export class PayingKit {
   ): SettleResponse | null {
     const val =
       input instanceof Headers
-        ? input.get('PAYMENT-RESPONSE') || input.get('X-PAYMENT-RESPONSE')
+        ? input.get(PAYMENT_RESPONSE_HEADER) ||
+          input.get(X_PAYMENT_RESPONSE_HEADER)
         : input
     return typeof val === 'string' ? JSON.parse(base64ToString(val)) : val
   }
 
   /**
    * (Optional) Submits a settle response to update the transaction status.
+   *
+   * A `settlement_pending` response is **not** submitted: x402 v2 §9 defines it
+   * as non-terminal — the broadcast transaction may still confirm — so
+   * recording it as `failed` would be wrong. Reconcile the transaction on chain
+   * and call this again with the resolved response.
+   *
    * @param txid The transaction ID to update.
    * @param input The settle response, which can be a SettleResponse object, a base64-encoded string, or Headers.
+   * @returns The settle response that was submitted, or `null` when there was
+   * nothing to submit (no settle response, or a pending settlement).
    */
   async submitSettleResult(
     txid: string,
     input: SettleResponse | string | Headers
-  ): Promise<void> {
+  ): Promise<SettleResponse | null> {
     const info = this.getSettleResponse(input)
-    if (info) {
-      const body: UpdatePaymentTxStatus = {
-        tx: info.transaction,
-        status: info.success ? 'finalized' : 'failed'
-      }
-      const res = await fetch(`${API_ENDPOINT}/${txid}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      })
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => '')
-        throw new Error(
-          `Failed to submit settle result: ${res.status} ${text}`.trim()
-        )
-      }
+    if (!info || isSettlementPending(info)) {
+      return null
     }
+
+    const body: UpdatePaymentTxStatus = {
+      tx: info.transaction,
+      status: info.success ? 'finalized' : 'failed'
+    }
+    const res = await fetch(`${API_ENDPOINT}/${txid}/status`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(
+        `Failed to submit settle result: ${res.status} ${text}`.trim()
+      )
+    }
+
+    return info
   }
 
   #nextNonce(): number {

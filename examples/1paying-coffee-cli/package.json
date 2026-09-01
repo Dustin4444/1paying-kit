@@ -15,7 +15,6 @@
   "main": "app.ts",
   "scripts": {
     "format": "prettier --write \"src/**/*.{json,js,jsx,ts,tsx,css,scss}\"",
-    "test": "vitest run",
     "ncu": "npx npm-check-updates -u"
   },
   "dependencies": {

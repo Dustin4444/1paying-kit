@@ -6,15 +6,9 @@
   "name": "1paying",
   "private": true,
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "prebuild": "npm run prebuild --workspaces --if-present",
-    "pretest": "npm run prebuild --workspaces --if-present",
-    "start": "npm start --workspaces --if-present",
-    "test": "npm test --workspaces --if-present"
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test"
   },
   "packageManager": "pnpm@10.24.0",
-  "type": "module",
-  "workspaces": [
-    "ts/one_pay"
-  ]
+  "type": "module"
 }

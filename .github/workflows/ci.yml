@@ -1,0 +1,34 @@
+name: "npm test"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # pnpm must be on PATH before setup-node, which reads it for `cache: pnpm`.
+      - run: npm install -g pnpm
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
+          cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
+      # This is a workspace: only the publishable package is installed and
+      # checked. The examples under examples/ depend on the *published* kit, so
+      # building them here would neither exercise this commit nor fail usefully.
+      - run: |
+          pnpm install --frozen-lockfile --filter '@ldclabs/1paying-kit...'
+          pnpm --filter '@ldclabs/1paying-kit' lint
+          pnpm --filter '@ldclabs/1paying-kit' test
+          pnpm --filter '@ldclabs/1paying-kit' build

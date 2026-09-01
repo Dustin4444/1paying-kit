@@ -1,0 +1,48 @@
+name: "Publish"
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only run npm publish --dry-run"
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for OIDC
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+      # No registry-url here: setup-node would write an .npmrc auth-token
+      # placeholder that makes npm authenticate with a token instead of OIDC
+      # trusted publishing.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      # Trusted publishing needs npm CLI >= 11.5.1; Node 24 already bundles a
+      # recent enough npm. Do NOT self-upgrade npm here: replacing a running
+      # npm can corrupt its install (e.g. "Cannot find module 'sigstore'").
+      - run: |
+          npm install --global pnpm@latest
+          pnpm install --frozen-lockfile --filter '@ldclabs/1paying-kit...'
+          pnpm --filter '@ldclabs/1paying-kit' lint
+          pnpm --filter '@ldclabs/1paying-kit' test
+          pnpm --filter '@ldclabs/1paying-kit' build
+      # npm publish must run from the package directory, not the workspace root.
+      - name: Dry-run npm publish
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        working-directory: ts/1paying-kit
+        run: npm publish --dry-run --access public
+      # OIDC trusted publishing: no NODE_AUTH_TOKEN, provenance is generated automatically.
+      - name: Publish to npm
+        if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
+        working-directory: ts/1paying-kit
+        run: npm publish --access public
